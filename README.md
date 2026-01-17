@@ -32,8 +32,20 @@ cp .env.example .env
 ### Usage
 
 ```bash
-python src/main.py audit <path-to-repository>
+# Basic usage (with AI analysis)
+python -m src.main audit <path-to-repository>
+
+# Output results as JSON
+python -m src.main audit <path-to-repository> --output json > results.json
+
+# Skip AI analysis (faster, uses only static analysis)
+python -m src.main audit <path-to-repository> --no-ai
+
+# Provide API key directly
+python -m src.main audit <path-to-repository> --api-key YOUR_KEY
 ```
+
+**Note:** For AI analysis, you need a `GEMINI_API_KEY` in your `.env` file or passed via `--api-key` flag.
 
 ## Project Structure
 
