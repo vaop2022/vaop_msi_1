@@ -4,10 +4,21 @@ Performs semantic analysis of code for algorithm-centricity and modularity asses
 """
 
 import os
+import warnings
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
-import google.generativeai as genai
+
+# Suppress FutureWarning BEFORE importing deprecated package
+warnings.filterwarnings('ignore', category=FutureWarning)
+
+# Try new API first, fallback to old if needed
+try:
+    from google import genai
+    USE_NEW_API = True
+except ImportError:
+    import google.generativeai as genai
+    USE_NEW_API = False
 
 # Load environment variables
 load_dotenv()
@@ -27,8 +38,53 @@ class AIAnalyzer:
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY not found. Set it in .env file or pass as argument.")
         
-        genai.configure(api_key=self.api_key)
-        self.model = genai.GenerativeModel('gemini-pro')
+        if USE_NEW_API:
+            # New API: google-genai
+            self.client = genai.Client(api_key=self.api_key)
+            self.model_name = "gemini-2.0-flash-exp"  # or "gemini-pro" if flash not available
+            self.model = None
+        else:
+            # Old API: google-generativeai (with warning suppression)
+            genai.configure(api_key=self.api_key)
+            self.model = genai.GenerativeModel('gemini-pro')
+            self.client = None
+            self.model_name = None
+    
+    def _generate_content(self, prompt: str) -> str:
+        """
+        Generate content using appropriate API (new or old).
+        
+        Args:
+            prompt: Text prompt for the model
+            
+        Returns:
+            Response text
+        """
+        if USE_NEW_API:
+            try:
+                response = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=prompt
+                )
+                # Extract text from response (format may vary)
+                if hasattr(response, 'text'):
+                    return response.text
+                elif hasattr(response, 'candidates') and response.candidates:
+                    if hasattr(response.candidates[0], 'content'):
+                        parts = response.candidates[0].content.parts
+                        if parts:
+                            return parts[0].text if hasattr(parts[0], 'text') else str(parts[0])
+                return str(response)
+            except Exception as e:
+                # Fallback to old API if new one fails
+                return self._generate_content_old(prompt)
+        else:
+            return self._generate_content_old(prompt)
+    
+    def _generate_content_old(self, prompt: str) -> str:
+        """Generate content using old API."""
+        response = self.model.generate_content(prompt)
+        return response.text
     
     def analyze_repairability(self, code_samples: List[Dict[str, str]]) -> Dict[str, Any]:
         """
@@ -43,8 +99,7 @@ class AIAnalyzer:
         prompt = self._build_repairability_prompt(code_samples)
         
         try:
-            response = self.model.generate_content(prompt)
-            analysis_text = response.text
+            analysis_text = self._generate_content(prompt)
             
             # Parse response (basic parsing - can be enhanced)
             return {
@@ -75,8 +130,7 @@ class AIAnalyzer:
         prompt = self._build_change_effort_prompt(code_samples)
         
         try:
-            response = self.model.generate_content(prompt)
-            analysis_text = response.text
+            analysis_text = self._generate_content(prompt)
             
             return {
                 "change_impact_score": self._extract_score(analysis_text, "change impact"),
@@ -106,8 +160,7 @@ class AIAnalyzer:
         prompt = self._build_legacy_compatibility_prompt(code_samples)
         
         try:
-            response = self.model.generate_content(prompt)
-            analysis_text = response.text
+            analysis_text = self._generate_content(prompt)
             
             return {
                 "algorithmic_separation": self._extract_score(analysis_text, "separation"),

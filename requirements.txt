@@ -11,6 +11,7 @@ lizard>=1.17.0
 # Git History Analysis
 GitPython>=3.1.0
 
-# AI Integration
-google-generativeai>=0.3.0
+# AI Integration (try new API, fallback to old if needed)
+google-genai>=0.2.0
+google-generativeai>=0.3.0  # Keep as fallback
 

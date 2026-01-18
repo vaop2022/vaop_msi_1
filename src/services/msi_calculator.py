@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Optional
 from pathlib import Path
 
-from ..domain.models import (
+from domain.models import (
     MSIResult,
     MSIRating,
     RepairabilityMetrics,
@@ -16,8 +16,8 @@ from ..domain.models import (
     StaticAnalysisData,
     AIAnalysisData
 )
-from ..adapters.static_analyzer import StaticAnalyzer
-from ..adapters.ai_analyzer import AIAnalyzer
+from adapters.static_analyzer import StaticAnalyzer
+from adapters.ai_analyzer import AIAnalyzer
 
 
 class MSICalculator:

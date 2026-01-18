@@ -4,6 +4,11 @@ Entry point for CLI application.
 """
 
 import json
+import os
+import re
+import shutil
+import subprocess
+import tempfile
 import typer
 from pathlib import Path
 from rich.console import Console
@@ -11,25 +16,71 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from .services.msi_calculator import MSICalculator
+from services.msi_calculator import MSICalculator
 
 # Initialize Typer app and Rich console
 app = typer.Typer()
 console = Console()
 
 
+def _is_github_url(path: str) -> bool:
+    """Check if path is a GitHub URL."""
+    github_pattern = r'^https?://(www\.)?github\.com/[\w\-]+/[\w\-]+/?$'
+    return bool(re.match(github_pattern, path))
+
+
+def _clone_github_repo(url: str, temp_dir: Path) -> Path:
+    """
+    Clone GitHub repository to temporary directory.
+    
+    Args:
+        url: GitHub repository URL
+        temp_dir: Temporary directory for cloning
+        
+    Returns:
+        Path to cloned repository
+    """
+    try:
+        # Extract repo name from URL
+        repo_name = url.rstrip('/').split('/')[-1]
+        clone_path = temp_dir / repo_name
+        
+        console.print(f"[yellow]Cloning repository:[/yellow] {url}")
+        
+        # Clone repository
+        result = subprocess.run(
+            ['git', 'clone', url, str(clone_path)],
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minute timeout
+        )
+        
+        if result.returncode != 0:
+            raise RuntimeError(f"Failed to clone repository: {result.stderr}")
+        
+        console.print(f"[green]✓[/green] Repository cloned to: {clone_path}")
+        return clone_path
+        
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("Repository cloning timed out after 5 minutes")
+    except FileNotFoundError:
+        raise RuntimeError("Git not found. Please install Git to clone repositories.")
+
+
 @app.command()
 def audit(
-    path: str = typer.Argument(..., help="Path to the repository/folder to audit"),
+    path: str = typer.Argument(..., help="Path to the repository/folder to audit, or GitHub URL (e.g., https://github.com/user/repo)"),
     output: str = typer.Option("console", "--output", "-o", help="Output format: 'console' or 'json'"),
     no_ai: bool = typer.Option(False, "--no-ai", help="Skip AI analysis (faster, less accurate)"),
-    api_key: str = typer.Option(None, "--api-key", help="Gemini API key (overrides .env)")
+    api_key: str = typer.Option(None, "--api-key", help="Gemini API key (overrides .env)"),
+    keep_clone: bool = typer.Option(False, "--keep-clone", help="Keep cloned repository after analysis (only for GitHub URLs)")
 ):
     """
-    Runs the MSI (Methodological Sustainability Index) audit on the specified path.
+    Runs the MSI (Methodological Sustainability Index) audit on the specified path or GitHub URL.
     
-    Example:
+    Examples:
         python src/main.py audit ./my_project
+        python src.main audit https://github.com/vaop2022/va-calc-6-new
         python src/main.py audit ./my_project --output json > results.json
     """
     console.print(Panel.fit(
@@ -37,11 +88,26 @@ def audit(
         title="VAOP MSI v0.1"
     ))
     
-    # Validate path
-    target_path = Path(path)
-    if not target_path.exists():
-        console.print(f"[bold red]Error:[/bold red] Path does not exist: {path}")
-        raise typer.Exit(1)
+    temp_dir = None
+    target_path = None
+    
+    # Check if path is a GitHub URL
+    if _is_github_url(path):
+        # Clone repository to temporary directory
+        temp_dir = Path(tempfile.mkdtemp(prefix="msi_audit_"))
+        try:
+            target_path = _clone_github_repo(path, temp_dir)
+        except Exception as e:
+            console.print(f"[bold red]Error cloning repository:[/bold red] {str(e)}")
+            if temp_dir and temp_dir.exists():
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            raise typer.Exit(1)
+    else:
+        # Use path as-is
+        target_path = Path(path)
+        if not target_path.exists():
+            console.print(f"[bold red]Error:[/bold red] Path does not exist: {path}")
+            raise typer.Exit(1)
     
     # Initialize calculator
     calculator = MSICalculator(gemini_api_key=api_key)
@@ -67,6 +133,9 @@ def audit(
             
         except Exception as e:
             console.print(f"[bold red]Error during analysis:[/bold red] {str(e)}")
+            # Cleanup temporary directory if it was created
+            if temp_dir and temp_dir.exists() and not keep_clone:
+                shutil.rmtree(temp_dir, ignore_errors=True)
             raise typer.Exit(1)
     
     # Output results
@@ -77,6 +146,13 @@ def audit(
     else:
         # Rich console output
         _display_results(console, result)
+    
+    # Cleanup temporary directory if it was created
+    if temp_dir and temp_dir.exists() and not keep_clone:
+        console.print(f"\n[dim]Cleaning up temporary directory...[/dim]")
+        shutil.rmtree(temp_dir, ignore_errors=True)
+    elif temp_dir and keep_clone:
+        console.print(f"\n[yellow]Repository kept at:[/yellow] {target_path}")
 
 
 def _display_results(console: Console, result):
