@@ -6,7 +6,7 @@ Extracts hard metrics: complexity, coupling, cohesion indicators.
 import os
 from pathlib import Path
 from typing import Dict, Any, List, Optional
-from radon.complexity import cc_visit
+from radon.complexity import cc_visit, cc_rank
 from radon.metrics import mi_visit
 from radon.raw import analyze
 import lizard
@@ -121,7 +121,7 @@ class StaticAnalyzer:
                 {
                     "name": c.name,
                     "complexity": c.complexity,
-                    "rank": c.rank
+                    "rank": cc_rank(c.complexity)
                 }
                 for c in all_complexity
             ],
