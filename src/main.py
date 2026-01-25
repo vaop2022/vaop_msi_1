@@ -111,11 +111,12 @@ def _display_results(console: Console, result):
     )
     
     # Change Effort
+    high_churn_info = f", High-churn files: {result.change_effort.high_churn_files_count}" if result.change_effort.high_churn_files_count > 0 else ""
     table.add_row(
         "Change Effort",
         f"{result.change_effort.score}/100",
-        f"Churn: {result.change_effort.average_churn_rate:.2f}, "
-        f"Complexity: {result.change_effort.complexity_churn_ratio:.2f}, "
+        f"Churn: {result.change_effort.average_churn_rate:.2f}/year{high_churn_info}, "
+        f"Complexity×Churn: {result.change_effort.complexity_churn_ratio:.2f}, "
         f"AI Centricity: {result.change_effort.ai_algorithmic_centricity:.1f}"
     )
     
@@ -134,6 +135,18 @@ def _display_results(console: Console, result):
     console.print(f"  Files analyzed: {result.static_analysis.file_count}")
     console.print(f"  Total lines: {result.static_analysis.total_lines}")
     console.print(f"  Avg complexity: {result.static_analysis.radon_complexity.get('average_complexity', 0):.2f}")
+    
+    # Git analysis summary
+    if result.git_analysis:
+        console.print(f"\n[bold]Git History Analysis:[/bold]")
+        console.print(f"  Average churn rate: {result.git_analysis.average_churn_rate:.2f} commits/file/year")
+        console.print(f"  Files tracked: {result.git_analysis.total_files_tracked}")
+        console.print(f"  Commits analyzed: {result.git_analysis.total_commits_analyzed}")
+        if result.git_analysis.high_churn_files:
+            console.print(f"  [yellow]⚠ High-churn files detected: {len(result.git_analysis.high_churn_files)}[/yellow]")
+    else:
+        console.print(f"\n[bold]Git History Analysis:[/bold]")
+        console.print("  [dim]No Git repository found - using neutral values[/dim]")
     
     if result.ai_analysis:
         console.print(f"\n[bold]AI Analysis:[/bold]")

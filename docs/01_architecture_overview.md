@@ -14,6 +14,7 @@ This project follows a **Layered Architecture** to separate technical implementa
 * **Components:**
     * `static_analyzer.py`: Runs `radon` and `lizard` on the codebase.
     * `ai_analyzer.py`: Sends code snippets to Google Gemini for semantic audit.
+    * `git_analyzer.py`: Analyzes Git repository history for churn metrics (Phase 2).
 
 ### 3. Services Layer (`src/services`)
 * **Responsibility:** The "Brain". It orchestrates the flow:

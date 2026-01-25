@@ -3,6 +3,8 @@ Pydantic models for MSI metrics.
 Defines the core data structures for Repairability, ChangeEffort, and LegacyCompatibility.
 """
 
+from __future__ import annotations
+
 from enum import Enum
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
@@ -81,6 +83,18 @@ class AIAnalysisData(BaseModel):
     analyzed_modules: List[str] = Field(default_factory=list, description="List of module paths analyzed by AI")
 
 
+class GitAnalysisData(BaseModel):
+    """Raw data from Git history analysis."""
+    
+    average_churn_rate: float = Field(..., description="Average commits per file per year")
+    file_churn_map: Dict[str, float] = Field(default_factory=dict, description="File path -> churn rate mapping")
+    high_churn_files: List[str] = Field(default_factory=list, description="Files with churn above threshold")
+    complexity_churn_ratio: float = Field(..., description="Correlation between complexity and churn")
+    analysis_period_days: int = Field(..., description="Time window analyzed in days")
+    total_files_tracked: int = Field(default=0, description="Total number of files with commit history")
+    total_commits_analyzed: int = Field(default=0, description="Total commits analyzed in the time window")
+
+
 class MSIResult(BaseModel):
     """Complete MSI audit result."""
     
@@ -91,6 +105,7 @@ class MSIResult(BaseModel):
     # Raw data
     static_analysis: StaticAnalysisData = Field(..., description="Raw static analysis data")
     ai_analysis: Optional[AIAnalysisData] = Field(None, description="Raw AI analysis data")
+    git_analysis: Optional["GitAnalysisData"] = Field(None, description="Raw Git history analysis data")
     
     # Calculated metrics
     repairability: RepairabilityMetrics = Field(..., description="Repairability metric results")

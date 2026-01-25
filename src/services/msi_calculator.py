@@ -14,10 +14,12 @@ from ..domain.models import (
     ChangeEffortMetrics,
     LegacyCompatibilityMetrics,
     StaticAnalysisData,
-    AIAnalysisData
+    AIAnalysisData,
+    GitAnalysisData
 )
 from ..adapters.static_analyzer import StaticAnalyzer
 from ..adapters.ai_analyzer import AIAnalyzer
+from ..adapters.git_analyzer import GitAnalyzer
 
 
 class MSICalculator:
@@ -48,6 +50,21 @@ class MSICalculator:
         static_data = static_analyzer.analyze()
         static_analysis = StaticAnalysisData(**static_data)
         
+        # Step 1.5: Git Analysis
+        git_analysis = None
+        try:
+            git_analyzer = GitAnalyzer(target_path)
+            if git_analyzer.is_available():
+                git_data = git_analyzer.analyze_churn()
+                # Calculate complexity-churn ratio
+                git_data["complexity_churn_ratio"] = git_analyzer.calculate_complexity_churn_ratio(
+                    static_data, git_data.get("file_churn_map")
+                )
+                git_analysis = GitAnalysisData(**git_data)
+        except Exception as e:
+            # Continue without Git if it fails
+            pass
+        
         # Step 2: AI Analysis (if enabled)
         ai_analysis = None
         if use_ai:
@@ -72,7 +89,7 @@ class MSICalculator:
         
         # Step 3: Calculate Metrics
         repairability = self._calculate_repairability(static_analysis, ai_analysis)
-        change_effort = self._calculate_change_effort(static_analysis, ai_analysis)
+        change_effort = self._calculate_change_effort(static_analysis, ai_analysis, git_analysis)
         legacy_compatibility = self._calculate_legacy_compatibility(static_analysis, ai_analysis)
         
         # Step 4: Calculate Final MSI Score
@@ -96,6 +113,7 @@ class MSICalculator:
             analysis_timestamp=datetime.now().isoformat(),
             static_analysis=static_analysis,
             ai_analysis=ai_analysis,
+            git_analysis=git_analysis,
             repairability=repairability,
             change_effort=change_effort,
             legacy_compatibility=legacy_compatibility,
@@ -155,19 +173,26 @@ class MSICalculator:
     def _calculate_change_effort(
         self,
         static_data: StaticAnalysisData,
-        ai_data: Optional[AIAnalysisData]
+        ai_data: Optional[AIAnalysisData],
+        git_data: Optional[GitAnalysisData] = None
     ) -> ChangeEffortMetrics:
-        """Calculate Change Effort metric."""
+        """Calculate Change Effort metric using real Git history data."""
         radon = static_data.radon_complexity
         lizard = static_data.lizard_complexity
         
-        # Hard metrics (simplified - Phase 1 doesn't include Git history yet)
+        # Hard metrics from static analysis
         avg_complexity = radon.get("average_complexity", 0.0)
         
-        # Placeholder for churn rate (will be implemented in Phase 2 with GitPython)
-        churn_rate = 1.0  # Default neutral value
-        complexity_churn_ratio = avg_complexity * churn_rate
-        high_churn_files = 0  # Placeholder
+        # Git metrics (use real data if available, otherwise neutral defaults)
+        if git_data:
+            churn_rate = git_data.average_churn_rate
+            complexity_churn_ratio = git_data.complexity_churn_ratio
+            high_churn_files = len(git_data.high_churn_files)
+        else:
+            # Fallback to neutral values if Git is not available
+            churn_rate = 1.0  # Neutral: 1 commit per year
+            complexity_churn_ratio = avg_complexity * churn_rate
+            high_churn_files = 0
         
         # AI metrics
         if ai_data and ai_data.change_effort_analysis:
@@ -180,10 +205,21 @@ class MSICalculator:
         # Calculate score (higher complexity + higher churn = higher effort)
         # Normalize complexity (0-100 scale, assuming max 20)
         complexity_score = min(100.0, (avg_complexity / 20.0) * 100.0)
-        churn_score = min(100.0, churn_rate * 10.0)  # Normalize churn
+        
+        # Normalize churn rate (0-100 scale)
+        # Industry standard: >5 commits/year is high churn, so normalize accordingly
+        # 0 commits/year = 0, 5 commits/year = 50, 10+ commits/year = 100
+        if churn_rate <= 0:
+            churn_score = 0.0
+        elif churn_rate <= 5.0:
+            churn_score = (churn_rate / 5.0) * 50.0
+        else:
+            churn_score = min(100.0, 50.0 + ((churn_rate - 5.0) / 5.0) * 50.0)
         
         # Combine metrics
-        hard_score = (complexity_score + churn_score) / 2.0
+        # Weight: complexity 40%, churn 40%, high-churn files count 20%
+        high_churn_penalty = min(100.0, (high_churn_files / max(1, static_data.file_count)) * 100.0)
+        hard_score = (complexity_score * 0.4 + churn_score * 0.4 + high_churn_penalty * 0.2)
         ai_score = ai_change_impact  # Higher impact = higher effort
         
         # Invert algorithmic centricity (higher centricity = lower effort)

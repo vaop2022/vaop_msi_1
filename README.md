@@ -2,7 +2,7 @@
 
 Methodological Sustainability Index Calculator
 
-A professional engineering tool for calculating the Methodological Sustainability Index (MSI) of codebases using static analysis and AI-powered semantic analysis.
+A professional engineering tool for calculating the Methodological Sustainability Index (MSI) of codebases using static analysis, Git history analysis, and AI-powered semantic analysis.
 
 ## Architecture
 
@@ -45,7 +45,9 @@ python -m src.main audit <path-to-repository> --no-ai
 python -m src.main audit <path-to-repository> --api-key YOUR_KEY
 ```
 
-**Note:** For AI analysis, you need a `GEMINI_API_KEY` in your `.env` file or passed via `--api-key` flag.
+**Note:** 
+- For AI analysis, you need a `GEMINI_API_KEY` in your `.env` file or passed via `--api-key` flag.
+- Git history analysis is automatically performed if the target path is a Git repository (`.git` directory present).
 
 ## Project Structure
 
